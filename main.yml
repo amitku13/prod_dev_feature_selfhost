@@ -1,60 +1,70 @@
-name: Build and Deploy
+name: Branch Specific Workflow
 
 on:
   push:
-    branches:
-      - '*' # Trigger on all branches
+    branches: # Trigger on the specified branches
+      - main
+      - develop
+      - feature/*
   pull_request:
-    branches:
-      - '*' # Trigger on pull requests for all branches
+    branches: # Trigger on pull requests targeting these branches
+      - main
+      - develop
+      - feature/*
 
 jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest # Use an Ubuntu runner
-
+  build:
+    runs-on: ubuntu-latest
     steps:
-      # Step 1: Checkout the repository
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v3
 
-      # Step 2: Setup Java environment
-      - name: Setup Java
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'temurin' # Use the Temurin JDK distribution
-          java-version: '11'      # Specify the Java version (adjust as needed)
-
-      # Step 3: Conditional Build and Deploy for Main Branch
-      - name: Build and Deploy to Development Server
-        if: github.ref_name == 'main' # Build and deploy only for the main branch
+      # Build step for all branches
+      - name: Build application
         run: |
-          echo "Building artifact for main branch"
+          echo "Building the application"
           mvn clean package
-          echo "Deploying to Development Server"
-          scp -i ${{ secrets.SSH_PRIVATE_KEY }} -o StrictHostKeyChecking=no \
-            target/*.war ${{ secrets.DEV_USER }}@${{ secrets.DEV_HOST }}:/opt/tomcat/webapps/
-          ssh -i ${{ secrets.SSH_PRIVATE_KEY }} -o StrictHostKeyChecking=no ${{ secrets.DEV_USER }}@${{ secrets.DEV_HOST }} << EOF
-            sudo /opt/tomcat/bin/shutdown.sh
-            sudo /opt/tomcat/bin/startup.sh
+
+  deploy-to-development:
+    if: github.ref_name == 'develop' # Run only on the 'develop' branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy to Development Server
+        run: |
+          echo "Deploying to the Development Server"
+          scp -i "${{ secrets.SSH_PRIVATE_KEY }}" -o StrictHostKeyChecking=no target/*.war ${{ secrets.DEV_USER }}@${{ secrets.DEV_HOST }}:/opt/tomcat/webapps/
+          ssh -i "${{ secrets.SSH_PRIVATE_KEY }}" -o StrictHostKeyChecking=no ${{ secrets.DEV_USER }}@${{ secrets.DEV_HOST }} <<EOF
+          sudo /opt/tomcat/bin/shutdown.sh
+          sudo /opt/tomcat/bin/startup.sh
           EOF
 
-      # Step 4: Conditional Build and Deploy for Prod Branch
-      - name: Build and Deploy to Production Server
-        if: github.ref_name == 'prod' # Build and deploy only for the prod branch
+  deploy-to-production:
+    if: github.ref_name == 'main' # Run only on the 'main' branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy to Production Server
         run: |
-          echo "Building artifact for prod branch"
-          mvn clean package
-          echo "Deploying to Production Server"
-          scp -i ${{ secrets.SSH_PRIVATE_KEY }} -o StrictHostKeyChecking=no \
-            target/*.war ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}:/opt/tomcat/webapps/
-          ssh -i ${{ secrets.SSH_PRIVATE_KEY }} -o StrictHostKeyChecking=no ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} << EOF
-            sudo /opt/tomcat/bin/shutdown.sh
-            sudo /opt/tomcat/bin/startup.sh
+          echo "Deploying to the Production Server"
+          scp -i "${{ secrets.SSH_PRIVATE_KEY }}" -o StrictHostKeyChecking=no target/*.war ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}:/opt/tomcat/webapps/
+          ssh -i "${{ secrets.SSH_PRIVATE_KEY }}" -o StrictHostKeyChecking=no ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} <<EOF
+          sudo /opt/tomcat/bin/shutdown.sh
+          sudo /opt/tomcat/bin/startup.sh
           EOF
 
-      # Step 5: Conditional Build for Feature Branch
-      - name: Build Artifact for Feature Branch
-        if: startsWith(github.ref_name, 'feature') # Build only for feature branches
+  build-feature-branch:
+    if: startsWith(github.ref_name, 'feature/') # Run for branches starting with 'feature/'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Build feature branch
         run: |
           echo "Building artifact for feature branch"
           mvn clean package
